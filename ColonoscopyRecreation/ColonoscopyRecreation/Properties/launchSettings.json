@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "ColonoscopyRecreation": {
+      "commandName": "Project",
+      "commandLineArgs": "\"hellworld\""
+    }
+  }
+}

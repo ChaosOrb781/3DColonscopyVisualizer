@@ -12,15 +12,21 @@ def Frames2Features(inputfolder, outputfolder, max_keypoints, filenameformat):
     
     # Validate frames
     for i, file in enumerate(files):
-        if (filenameformat.replace("{0}", str(i)) not in files_hashset):
-            print("Invalid file found:", file, "expected:", filenameformat.replace("{0}", str(i)))
+        if (filenameformat.format(i) not in files_hashset):
+            print("Invalid file found:", file, "expected:", filenameformat.format(i))
             sys.exit()
 
     # Generate features 
     sift = cv2.SIFT_create()
     
+    total_files = len(files)
+    
+    current_percentage = 0;
+    next_percentage = 0;
+    stepsize = 0.05;
+    
     for i, file in enumerate(files):
-        img = cv2.imread(os.path.join(inputfolder, filenameformat.replace("{0}", str(i))))
+        img = cv2.imread(os.path.join(inputfolder, filenameformat.format(i)))
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         
         tmpkeys, desc = sift.detectAndCompute(gray, None)
@@ -37,7 +43,12 @@ def Frames2Features(inputfolder, outputfolder, max_keypoints, filenameformat):
         
         PickleUtil.Save(os.path.join(outputfolder, file.replace(".jpg", ".keyp")), keyp)
         PickleUtil.Save(os.path.join(outputfolder, file.replace(".jpg", ".desc")), desc)
-        print(f"Processing {i+1}/{len(files)} frames")
+        
+        current_percentage = (i+1) / total_files
+        
+        if (current_percentage > next_percentage):
+            print(f"Processing frames {round(next_percentage, 2) * 100}%")
+            next_percentage = next_percentage + stepsize
 
 if __name__ == "__main__":
     inputfolder = ''
@@ -57,4 +68,4 @@ if __name__ == "__main__":
     print('Input folder is', inputfolder)
     print('Output folder is', outputfolder)
     print('Max number of keypoints is', max_keypoints)
-    Frames2Features(inputfolder, outputfolder, max_keypoints, "frame{0}.jpg")
+    Frames2Features(inputfolder, outputfolder, max_keypoints, "frame{:0>5}.jpg")

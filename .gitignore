@@ -1,3 +1,12 @@
 ﻿__pycache__
 Features
 Frames
+ColMap/V6
+ColonoscopyRecreation/.vs
+ColonoscopyRecreation/TestProject/obj
+ColonoscopyRecreation/TestProject/bin
+ColonoscopyRecreation/PrototypeTests/obj
+ColonoscopyRecreation/PrototypeTests/bin
+ColonoscopyRecreation/ColonoscopyRecreation/bin
+ColonoscopyRecreation/ColonoscopyRecreation/obj
+*.db
