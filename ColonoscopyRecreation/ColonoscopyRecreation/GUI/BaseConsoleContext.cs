@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace ColonoscopyRecreation.GUI
@@ -37,12 +38,17 @@ namespace ColonoscopyRecreation.GUI
         }
 
         public virtual Task Display() => throw new NotImplementedException();
-        public virtual Task<T> Display<T>() => throw new NotImplementedException();
         public void Cleanup()
         {
             _cancellationTokenSource.Cancel();
         }
 
         public override string ToString() => Title;
+    }
+
+    public abstract class BaseConsoleContext<T> : BaseConsoleContext, IConsoleContext<T>
+    {
+        public BaseConsoleContext(IConsoleContext parent, string title) : base(parent, title) { }
+        public virtual Task<T> DisplayWithReturn() => throw new NotImplementedException();
     }
 }

@@ -226,37 +226,53 @@ namespace ColonoscopyRecreation.Entities
             return extracted_image_data;
         }
 
-        public async Task ProcessSequentialFrameKeypoints()
+        public async Task ProcessSequentialFrameKeypoints(string sqlconnection)
         {
             int count = this.Frames.Count;
+            Mat mask = this.Mask?.ToImageMat()!;
             int i = 1;
             Frame prevframe = null!;
             foreach (Frame frame in this.Frames.Where(f => f.FrameIndex >= 0).OrderBy(f => f.FrameIndex))
             {
-                TimeSpan ts = await frame.ProcessKeyFeatures("processvideo.db", this.Mask.ToMat(), 250).TimeIt();
-                Debug.WriteLine($"Frame {frame.FrameIndex} got {frame.KeyPoints.Count} keyfeatures in {ts} ({i}/{count})");
+                var before = DateTime.Now;
+                frame.GenerateKeyPoints(mask, 1000);
+                frame.GenerateDescriptors(1000);
+                Debug.WriteLine($"Frame {frame.FrameIndex} got {frame.KeyPoints.Count} keyfeatures in {DateTime.Now.Subtract(before)} ({i}/{count})");
                 if (i > 1)
                 {
-                    /*
-                    # create BFMatcher object
-                    bf = cv.BFMatcher(cv.NORM_HAMMING, crossCheck=True)
-                    # Match descriptors.
-                    matches = bf.match(des1,des2)
-                    # Sort them in the order of their distance.
-                    matches = sorted(matches, key = lambda x:x.distance)
-                    # Draw first 10 matches.
-                    img3 = cv.drawMatches(img1,kp1,img2,kp2,matches[:10],None,flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
-                    plt.imshow(img3),plt.show()
-                    */
                     CudaBFMatcher matcher = new CudaBFMatcher(DistanceType.Hamming);
-                    var matches = new VectorOfVectorOfDMatch();
+                    var matches = new VectorOfDMatch();
 
-
-                    matcher.Match(prevframe.GetDescriptors(), frame.GetDescriptors(), matches, this.Mask);
-
+                    matcher.Add(prevframe.GetDescriptors());
+                    matcher.Match(frame.GetDescriptors(), matches);
                 }
                 prevframe = frame;
                 i++;
+            }
+        }
+
+        public void GenerateMatches(string sqlconnection, string folderpath)
+        {
+            using (var db = new DatabaseContext(sqlconnection))
+            {
+                db.Attach(this);
+                var frames = this.Frames.Where(f => f.FrameIndex >= 0).OrderBy(f => f.FrameIndex).ToList();
+                var prev_descriptors = frames[0].GetDescriptors();
+                for (int i = 1; i < frames.Count; i++)
+                {
+                    var current_descriptors = frames[i].GetDescriptors();
+
+                    var before = DateTime.Now;
+
+                    CudaBFMatcher matcher = new CudaBFMatcher(DistanceType.Hamming);
+                    matcher.Add(prev_descriptors);
+                    var matches = new VectorOfDMatch();
+                    matcher.Match(current_descriptors, matches);
+
+                    Debug.WriteLine($"Matching frames {i-1} and {i} in {DateTime.Now.Subtract(before)} ({i}/{frames.Count})");
+
+                    prev_descriptors = current_descriptors;
+                }
             }
         }
     }

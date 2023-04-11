@@ -14,7 +14,7 @@ namespace ColonoscopyRecreation
 {
     internal class Program
     {
-        public const string SQLiteDatabasePath = @"C:\Users\tobia\OneDrive\Skrivebord\Github\3DColonscopyVisualizer\ColonoscopyRecreation\ColonoscopyRecreation\local.db";
+        public const string SQLiteDatabasePath = @"..\..\..\local.db";
 
         [STAThread]
         static async Task Main(string[] args)

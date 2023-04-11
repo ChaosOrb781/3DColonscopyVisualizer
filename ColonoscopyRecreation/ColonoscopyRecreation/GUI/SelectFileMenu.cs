@@ -57,11 +57,5 @@ namespace ColonoscopyRecreation.GUI
                 return CurrentPath;
             };
         }
-
-        public override async Task<T> Display<T>()
-        {
-            await base.Display();
-            return (T)(object)CurrentPath;
-        }
     }
 }

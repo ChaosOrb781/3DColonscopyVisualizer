@@ -22,7 +22,7 @@ namespace ColonoscopyRecreation.Database
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
-            optionsBuilder.UseSqlite($"Data Source={SQLiteDatabasePath}");
+            optionsBuilder.UseLazyLoadingProxies().UseSqlite($"Data Source={SQLiteDatabasePath}");
         }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -62,7 +62,12 @@ namespace ColonoscopyRecreation.Database
             keypointmodel.Property(k => k.Angle).IsRequired();
             keypointmodel.Property(k => k.ClassId).IsRequired();
             keypointmodel.Property(k => k.Response).IsRequired();
-            keypointmodel.Property(k => k.Descriptors).IsRequired();
+            keypointmodel.Property(k => k.Descriptors).IsRequired(false);
+
+            var matchmodel = modelBuilder.Entity<Match>();
+            matchmodel.HasKey(m => m.Id);
+            matchmodel.HasOne(m => m.KeyPoint1).WithMany();
+            matchmodel.HasOne(m => m.KeyPoint2).WithMany();
         }
     }
 }

@@ -18,6 +18,7 @@
     <PackageReference Include="Emgu.CV.runtime.windows" Version="4.6.0.5131" />
     <PackageReference Include="Emgu.CV.UI" Version="4.6.0.5131" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="6.0.15" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Proxies" Version="6.0.15" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="6.0.15" />
     <PackageReference Include="SQLite" Version="3.13.0" />
   </ItemGroup>
