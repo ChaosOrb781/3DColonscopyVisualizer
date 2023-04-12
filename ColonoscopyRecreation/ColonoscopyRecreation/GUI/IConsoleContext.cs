@@ -14,11 +14,8 @@ namespace ColonoscopyRecreation.GUI
         public List<string> Controls { get; set; }
         public IConsoleContext Parent { get; }
 
-        public Task Display();
-    }
+        public void Reset();
 
-    public interface IConsoleContext<T> : IConsoleContext
-    {
-        public Task<T> DisplayWithReturn();
+        public T Display<T>();
     }
 }

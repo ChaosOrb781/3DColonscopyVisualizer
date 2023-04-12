@@ -6,47 +6,59 @@ using System.Threading.Tasks;
 
 namespace ColonoscopyRecreation.GUI
 {
-    public class SelectFileMenu : Menu<string>
+    public class SelectFileMenu : Menu
     {
+        private bool _select_folder = true;
         private string _currentpath = null!;
         public string CurrentPath 
         { 
             get { return _currentpath; } 
-            set { 
+            set {
+                string old_folder = Path.GetFileName(Path.GetDirectoryName(_currentpath));
                 _currentpath = value;
-                SelectedItem = 0;
-                Items = Directory.GetDirectories(CurrentPath)
+                Items = Directory.GetDirectories(_currentpath)
                     .Select(folder => 
-                        KeyValuePair.Create<string, Func<Task<string>>>(
-                            Path.GetFileName(folder) + "/", () => Task.FromResult(folder)))
+                        KeyValuePair.Create<string, Action>(
+                            Path.GetFileName(folder) + "\\", () => { if (_select_folder) { base.ReturnValue = folder; base.ExitEarly = true; } else { CurrentPath = folder; } }))
                     .Concat(Directory.GetFiles(CurrentPath)
                         .Where(file => 
-                            _file_extensions == null //If nothing is defined, do any file
-                         || _file_extensions.Contains(Path.GetExtension(file)))
+                            _file_extensions != null //If nothing is defined, do any file
+                            && _file_extensions.Contains(Path.GetExtension(file)))
                         .Select(file =>
-                        KeyValuePair.Create<string, Func<Task<string>>>(
-                            Path.GetFileName(file), () => Task.FromResult(file))))
+                        KeyValuePair.Create<string, Action>(
+                            Path.GetFileName(file), () => { if (!_select_folder) { base.ReturnValue = file; base.ExitEarly = true; } })))
                     .ToList();
-            } 
+                SelectedItem = Items.FindIndex(f => old_folder != null && f.Key.StartsWith(old_folder));
+                if (SelectedItem < 0)
+                    SelectedItem = 0;
+
+                int width = Console.WindowWidth;
+                string title = CurrentPath;
+                bool exceeded_width = width - 5 < title.Length;
+                if (exceeded_width)
+                    title = "..." + title.Substring(title.Length - width + 3, width - 3);
+                base.MenuHeader = $"{(_select_folder ? "Select folder" : $"Select file ({string.Join(", ", _file_extensions)})")}\n{title}";
+            }
         }
 
         private List<string> _file_extensions = null!;
 
         public SelectFileMenu(IConsoleContext parent, string title, string basepath, IEnumerable<string> include_file_exts = null!) 
-            : base(parent, title, include_file_exts == null ? "Select folder" : "Select file", new List<IConsoleContext>())
+            : base(parent, title, null)
         {
+            _file_extensions = include_file_exts?.ToList()!; 
+            _select_folder = include_file_exts == null;
             CurrentPath = basepath;
-            _file_extensions = include_file_exts?.ToList()!;
 
             Controls.Add("[Left-/RightArrow]: Exit/enter directory");
 
-            AdditionalControls = async (key) =>
+            AdditionalControls = (key) =>
             {
                 switch (key.Key)
                 {
                     case ConsoleKey.RightArrow:
-                        if (SelectedItem < Items.Count && SelectedItem >= 0 && Items[SelectedItem].Key.EndsWith("/"))
-                            CurrentPath = await Items[SelectedItem].Value.Invoke();
+                        if (SelectedItem < Items.Count && SelectedItem >= 0 && Items[SelectedItem].Key.EndsWith("\\"))
+                            CurrentPath = Path.Combine(CurrentPath, Items[SelectedItem].Key.Substring(0, Items[SelectedItem].Key.Length));
                         break;
                     case ConsoleKey.LeftArrow:
                         var tmp = new DirectoryInfo(CurrentPath);
@@ -54,7 +66,6 @@ namespace ColonoscopyRecreation.GUI
                             CurrentPath = tmp.Parent.FullName;
                         break;
                 }
-                return CurrentPath;
             };
         }
     }

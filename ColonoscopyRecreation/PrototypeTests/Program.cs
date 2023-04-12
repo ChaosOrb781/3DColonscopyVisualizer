@@ -8,6 +8,7 @@ using Emgu.CV.Util;
 using Emgu.CV;
 using Microsoft.EntityFrameworkCore;
 using System.ComponentModel;
+using System.Diagnostics;
 
 namespace PrototypeTests
 {
@@ -108,10 +109,12 @@ namespace PrototypeTests
             using (var db = new DatabaseContext("processvideo.db"))
             {
                 v = db.Videos.Find(1)!;
-                for (var frame_ind = 1; frame_ind < db.Frames.Count(); frame_ind++)
+                var frames = db.Frames.Where(f => f.FrameIndex >= 0).OrderBy(f => f.FrameIndex).ToList();
+                int frame_ind = 1;
+                while (true)
                 {
-                    var first_frame = v.Frames[frame_ind-1];
-                    var second_frame = v.Frames[frame_ind];
+                    var first_frame = frames[frame_ind-1];
+                    var second_frame = frames[frame_ind];
 
                     // Create a BFMatcher and match the descriptors
                     BFMatcher matcher = new BFMatcher(DistanceType.L2);
@@ -121,7 +124,7 @@ namespace PrototypeTests
                     VectorOfKeyPoint keypoints2 = second_frame.GetKeyPoints();
 
 
-                    /*
+                    
                     VectorOfVectorOfDMatch matches = new VectorOfVectorOfDMatch();
                     matcher.KnnMatch(descriptors1, descriptors2, matches, 10);
                     float ratioThresh = 0.75f;
@@ -137,33 +140,37 @@ namespace PrototypeTests
                         }
                     }
                     VectorOfDMatch good_matches = new VectorOfDMatch(goodMatches.ToArray());
-                    */
-
+                    
+                    /*
                     VectorOfDMatch matches = new VectorOfDMatch();
                     matcher.Match(descriptors1, descriptors2, matches);
                     VectorOfDMatch good_matches = new VectorOfDMatch();
                     List<(int, double)> distance_arr = new List<(int, double)>();
                     for (int i = 0; i < matches.Size; i++)
                     {
-                        if (matches[i].QueryIdx >= 0 && matches[i].QueryIdx < Math.Min(descriptors2.Rows, descriptors1.Rows)
-                            && matches[i].TrainIdx >= 0 && matches[i].TrainIdx < Math.Min(descriptors2.Rows, descriptors1.Rows))
+                        if (matches[i].QueryIdx >= 0 && matches[i].QueryIdx < descriptors2.Rows
+                            && matches[i].TrainIdx >= 0 && matches[i].TrainIdx < descriptors1.Rows)
                             //good_matches.Push(new MDMatch[] { matches[i] });
                             distance_arr.Add((i, matches[i].Distance));
                     }
-                    var top50matches = distance_arr.OrderBy(tup => tup.Item2).Take(50).Select(tup => matches[tup.Item1]).ToArray();
+                    var top50matches = distance_arr.OrderBy(tup => tup.Item2).Select(tup => matches[tup.Item1]).ToArray();
                     good_matches.Push(top50matches);
+                    */
                 
                     // Draw the matches on a new image
                     Mat result = new Mat();
-                    Features2DToolbox.DrawMatches(first_frame.ToImage(), keypoints1, second_frame.ToImage(), keypoints2, good_matches, result, new MCvScalar(0, 255, 0, 40), new MCvScalar(0, 0, 255, 40), null);
+                    Features2DToolbox.DrawMatches(first_frame.ToImage(), keypoints2, second_frame.ToImage(), keypoints1, good_matches, result, new MCvScalar(0, 255, 0, 40), new MCvScalar(0, 0, 255, 40), null, Features2DToolbox.KeypointDrawType.DrawRichKeypoints);
 
                     // Display the result
+                    CvInvoke.PutText(result, $"Frame {frame_ind - 1}-{frame_ind} (total: {frames.Count})", new System.Drawing.Point(5,20), Emgu.CV.CvEnum.FontFace.HersheyPlain, 1, new MCvScalar(255, 100, 100), 1);
+                    CvInvoke.PutText(result, $"Esc/Backspace to exit", new System.Drawing.Point(5, 40), Emgu.CV.CvEnum.FontFace.HersheyPlain, 1, new MCvScalar(255, 100, 100), 1);
                     CvInvoke.Imshow("Matches", result);
-                    CvInvoke.WaitKey(0);
+                    int key = CvInvoke.WaitKey(0);
+                    Debug.WriteLine(key);
+                    if (key == 8 || key == 27) break; //Backspace or escape
 
                     var keypoints = first_frame.KeyPoints;
-                    var image = first_frame.ToImageWithKeypoints(Features2DToolbox.KeypointDrawType.DrawRichKeypoints);
-                    image.Save($"testimage{frame_ind}.png");
+                    frame_ind = frame_ind < frames.Count - 1 ? frame_ind + 1 : 1;
                 }
             }
         }

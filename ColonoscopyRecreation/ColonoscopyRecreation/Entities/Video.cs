@@ -1,5 +1,6 @@
 ﻿using ColonoscopyRecreation.Database;
 using ColonoscopyRecreation.Extensions;
+using ColonoscopyRecreation.GUI;
 using Emgu.CV;
 using Emgu.CV.Cuda;
 using Emgu.CV.CvEnum;
@@ -9,6 +10,7 @@ using Emgu.CV.Util;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
+using System.Data.SqlTypes;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
@@ -16,6 +18,14 @@ using System.Threading.Tasks;
 
 namespace ColonoscopyRecreation.Entities
 {
+    [Flags]
+    public enum VideoState
+    {
+        NotProcessed = 0,
+        VideoProcessed = 1,
+        FramesProcessed = 2
+    }
+
     public class Video
     {
         public int Id { get; set; }
@@ -38,11 +48,13 @@ namespace ColonoscopyRecreation.Entities
             VideoFilepath = videofilepath;
             MaskFilePath = maskfilepath!;
 
-            VideoCapture vc = new VideoCapture();
-            Mat frame = new Mat();
-            vc.Read(frame);
-            Width = frame.Width;
-            Height = frame.Height;
+            using (var vc = new VideoCapture(VideoFilepath))
+            {
+                Mat frame = new Mat();
+                vc.Read(frame);
+                Width = frame.Width;
+                Height = frame.Height;
+            }
 
             if (MaskFilePath != null)
                 SetWidthHeightBasedOnMask();
@@ -71,82 +83,7 @@ namespace ColonoscopyRecreation.Entities
             MaskOffsetY = miny;
         }
 
-        public async Task ProcessVideo(string sqlconnection, bool force_generate = false)
-        {
-            if (!File.Exists(VideoFilepath))
-                throw new InvalidDataException($"VideoFilepath {VideoFilepath} does not exist when tried to process it");
-
-            using (var db = new DatabaseContext(sqlconnection))
-            {
-                db.Database.EnsureCreated();
-                db.Attach(this);
-
-                //Read in the video and mask
-                var videocapture = new VideoCapture(VideoFilepath);
-                Image<Gray, byte> mask = null!;
-                if (MaskFilePath != null && File.Exists(MaskFilePath) && !this.Frames.Any(f => f.FrameIndex == -1))
-                {
-                    mask = CvInvoke.Imread(MaskFilePath, ImreadModes.Grayscale).ToImage<Gray, byte>();
-
-                    //Add frame to the database
-                    Frame db_frame = new Frame()
-                    {
-                        Content = GetMaskedImageBytes(mask, mask),
-                        FrameIndex = -1,
-                        Video = this
-                    };
-                    this.Frames.Insert(0, db_frame);
-                }
-
-                int frame_counter = 0;
-                //Skip already generated frames
-                HashSet<int> existing_frames = new (Frames.Select(f => f.FrameIndex));
-
-                Mat frame = new Mat();
-                while (videocapture.Read(frame))
-                {
-                    if (force_generate || !existing_frames.Contains(frame_counter))
-                    {
-                        //Convert the frame to a grayscale image
-                        CvInvoke.CvtColor(frame, frame, ColorConversion.Bgr2Gray);
-                        var image = frame.ToImage<Gray, byte>();
-
-                        //Add frame to the database
-                        Frame db_frame = new Frame()
-                        {
-                            Content = GetMaskedImageBytes(image, mask),
-                            FrameIndex = frame_counter,
-                            Video = this,
-                        };
-                        db.Frames.Add(db_frame);
-                    }
-                    frame_counter++;
-                }
-
-                await db.SaveChangesAsync();
-            }
-        }
-
-        private byte[] GetMaskedImageBytes(Image<Gray, byte> image, Image<Gray, byte> mask)
-        {
-            //Extract relevant pixels based on the Mask (if no mask, it extracts all)
-            byte[] extracted_image_data = new byte[Width * Height];
-            for (int col = MaskOffsetX; col < MaskOffsetX + Width; col++)
-            {
-                for (int row = MaskOffsetY; row < MaskOffsetY + Height; row++)
-                {
-                    double pixel_intensity = image[row, col].Intensity;
-                    double mask_intensity = (mask != null) ? mask[row, col].Intensity : 1.0;
-                    byte final_intensity = Math.Clamp((byte)(pixel_intensity * mask_intensity * 255), byte.MinValue, byte.MaxValue);
-                    //System.Diagnostics.Debug.WriteLine(col + " " + row);
-                    extracted_image_data[((row - MaskOffsetY) * Width) + (col - MaskOffsetX)] = final_intensity;
-                }
-            }
-
-            return extracted_image_data;
-        }
-
-        public async Task ProcessVideoParallel(string sqlconnection, bool force_generate = false)
+        public async Task ProcessVideoParallel(string sqlconnection, ProgressBar progressbar = null!, bool force_generate = false)
         {
             if (!File.Exists(VideoFilepath))
                 throw new InvalidDataException($"VideoFilepath {VideoFilepath} does not exist when tried to process it");
@@ -170,6 +107,8 @@ namespace ColonoscopyRecreation.Entities
                         FrameIndex = -1,
                         Video = this
                     };
+                    Width = mask.Width; 
+                    Height = mask.Height;
                     this.Frames.Insert(0, db_frame);
                 }
 
@@ -181,6 +120,8 @@ namespace ColonoscopyRecreation.Entities
                 Mat frame = new Mat();
                 while (videocapture.Read(frame))
                 {
+                    progressbar.UpdateText($"Processed: {frame_counter + 1} frames");
+                    progressbar.Display<object>();
                     if (force_generate || !existing_frames.Contains(frame_counter))
                     {
                         //Convert the frame to a grayscale image
@@ -198,6 +139,7 @@ namespace ColonoscopyRecreation.Entities
                     }
                     frame_counter++;
                 }
+                progressbar.UpdateText($"Saving...");
 
                 await db.SaveChangesAsync();
             }
@@ -226,28 +168,17 @@ namespace ColonoscopyRecreation.Entities
             return extracted_image_data;
         }
 
-        public async Task ProcessSequentialFrameKeypoints(string sqlconnection)
+        public async Task ProcessFrames(string sqlconnection)
         {
-            int count = this.Frames.Count;
-            Mat mask = this.Mask?.ToImageMat()!;
-            int i = 1;
-            Frame prevframe = null!;
-            foreach (Frame frame in this.Frames.Where(f => f.FrameIndex >= 0).OrderBy(f => f.FrameIndex))
+            using (var db = new DatabaseContext(sqlconnection))
             {
-                var before = DateTime.Now;
-                frame.GenerateKeyPoints(mask, 1000);
-                frame.GenerateDescriptors(1000);
-                Debug.WriteLine($"Frame {frame.FrameIndex} got {frame.KeyPoints.Count} keyfeatures in {DateTime.Now.Subtract(before)} ({i}/{count})");
-                if (i > 1)
+                db.Attach(this);
+                foreach (var frame in this.Frames.Where(f => f.FrameIndex >= 0).OrderBy(f => f.FrameIndex).ToList())
                 {
-                    CudaBFMatcher matcher = new CudaBFMatcher(DistanceType.Hamming);
-                    var matches = new VectorOfDMatch();
-
-                    matcher.Add(prevframe.GetDescriptors());
-                    matcher.Match(frame.GetDescriptors(), matches);
+                    frame.GenerateKeyPoints(this.Mask.ToImageMat());
+                    frame.GenerateDescriptors();
                 }
-                prevframe = frame;
-                i++;
+                db.SaveChanges();
             }
         }
 

@@ -53,7 +53,7 @@ namespace ColonoscopyRecreation.Entities
         public void GenerateKeyPoints(Mat mask = null!, int n_features = 0, int m_octaves = 3)
         {
             ArgumentNullException.ThrowIfNull(this.Video);
-            
+
             SIFT sift = new SIFT(n_features, m_octaves);
             var keypoints = sift.Detect(this.ToImageMat(), mask);
 

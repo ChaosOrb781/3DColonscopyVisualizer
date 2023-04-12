@@ -10,7 +10,7 @@ namespace ColonoscopyRecreation.GUI
 {
     public static class ConsoleUtil
     {
-        public static void ClearScreen(IConsoleContext context, List<string> controls = null)
+        public static int ClearScreen(IConsoleContext context, List<string> controls = null!)
         {
             Console.Clear();
             SetRow(0, '-', '+', '+');
@@ -25,30 +25,32 @@ namespace ColonoscopyRecreation.GUI
                 {
                     if (acc.Item2 == 0)
                         acc.Item2 = 1;
-                    if (acc.Item1 + control.Length + 1 > Console.WindowWidth - 2)
+                    if (acc.Item1 + control.Length + 3 > Console.WindowWidth - 2)
                     {
                         acc.Item1 = 0;
                         acc.Item2++;
                         acc.Item3.Append("\n|");
                     }
-                    acc.Item1 += control.Length + 1;
-                    acc.Item3.Append(control).Append(" ");
+                    acc.Item1 += control.Length + 3;
+                    acc.Item3.Append(control).Append("   ");
                     return acc!;
                 });
 
             bool hascontrols = controlsstring?.Item3.Length > 0;
+            int offset = 3;
             if (hascontrols)
             {
                 Console.WriteLine($"|{controlsstring.Value.Item3.ToString()}");
                 DrawVerticalLine(Console.WindowWidth - 1, 1, controlsstring.Value.Item2 + 1, '|');
                 SetRow(controlsstring.Value.Item2 + 2, '-', '+', '+');
+                offset += controlsstring.Value.Item2;
             }
             else
             {
                 DrawVerticalLine(Console.WindowWidth - 1, 1, 1, '|');
                 SetRow(2, '-', '+', '+');
             }
-                
+            return offset; 
         }
 
         public static void DrawHorizontalLine(int row, int col_start, int col_end, char c) => DrawHorizontalLine(row, col_start, col_end, c, c, c);

@@ -14,6 +14,9 @@ namespace ColonoscopyRecreation.Database
         public string SQLiteDatabasePath { get; set; }
         public DbSet<Frame> Frames { get; set; }
         public DbSet<Video> Videos { get; set; }
+        public DbSet<KeyPoint> KeyPoints { get; set; }
+        public DbSet<ColMapWorkspace> ColMapWorkspaces { get; set; }
+        public DbSet<ExecutableFilePath> ExecutableFilePaths { get; set; }
 
         public DatabaseContext(string databaspath) 
         { 
@@ -64,10 +67,16 @@ namespace ColonoscopyRecreation.Database
             keypointmodel.Property(k => k.Response).IsRequired();
             keypointmodel.Property(k => k.Descriptors).IsRequired(false);
 
-            var matchmodel = modelBuilder.Entity<Match>();
-            matchmodel.HasKey(m => m.Id);
-            matchmodel.HasOne(m => m.KeyPoint1).WithMany();
-            matchmodel.HasOne(m => m.KeyPoint2).WithMany();
+            var workspacemodel = modelBuilder.Entity<ColMapWorkspace>();
+            workspacemodel.HasKey(w => w.Id);
+            workspacemodel.HasOne(w => w.Video).WithMany();
+            workspacemodel.Property(w => w.FolderPath).IsRequired();
+            workspacemodel.Property(w => w.Status).IsRequired();
+
+            var executablemodel = modelBuilder.Entity<ExecutableFilePath>();
+            executablemodel.HasKey(w => w.Id);
+            executablemodel.Property(w => w.Name).IsRequired();
+            executablemodel.Property(w => w.FilePath).IsRequired();
         }
     }
 }

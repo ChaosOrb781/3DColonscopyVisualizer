@@ -17,9 +17,9 @@ namespace ColonoscopyRecreation.GUI
             {
                 int width = Console.WindowWidth;
                 string title = FullContextPath;
-                bool exceeded_width = width < title.Length - 5;
+                bool exceeded_width = width - 7 < title.Length;
                 if (exceeded_width)
-                    title = "..." + title.Substring(title.Length - width - 5, width - 5);
+                    title = "..." + title.Substring(title.Length - width + 5, width - 5);
                 return title;
             } 
         }
@@ -37,18 +37,17 @@ namespace ColonoscopyRecreation.GUI
             _cancellationTokenSource = new();
         }
 
-        public virtual Task Display() => throw new NotImplementedException();
+        public virtual void Reset()
+        {
+        }
+
+        public virtual T Display<T>() => throw new NotImplementedException();
+
         public void Cleanup()
         {
             _cancellationTokenSource.Cancel();
         }
 
         public override string ToString() => Title;
-    }
-
-    public abstract class BaseConsoleContext<T> : BaseConsoleContext, IConsoleContext<T>
-    {
-        public BaseConsoleContext(IConsoleContext parent, string title) : base(parent, title) { }
-        public virtual Task<T> DisplayWithReturn() => throw new NotImplementedException();
     }
 }
