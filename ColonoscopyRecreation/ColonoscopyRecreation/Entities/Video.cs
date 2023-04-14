@@ -12,6 +12,7 @@ using System;
 using System.Collections.Generic;
 using System.Data.SqlTypes;
 using System.Diagnostics;
+using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -32,7 +33,7 @@ namespace ColonoscopyRecreation.Entities
         public string VideoFilepath { get; set; } = null!;
         public int Width { get; set; }
         public int Height { get; set; }
-        public string MaskFilePath { get; set; } = null!;
+        public string? MaskFilePath { get; set; } = null!;
         public int MaskOffsetX { get; set; } = 0;
         public int MaskOffsetY { get; set; } = 0;
         public virtual Frame Mask => Frames.FirstOrDefault(f => f.FrameIndex == -1);
@@ -83,6 +84,32 @@ namespace ColonoscopyRecreation.Entities
             MaskOffsetY = miny;
         }
 
+        public void GenerateMaskedColorImages(string imagedir, string maskdir, ProgressBar progressbar = null!)
+        {
+            if (Directory.Exists(imagedir))
+                Directory.Delete(imagedir, true);
+            Directory.CreateDirectory(imagedir);
+            if (Directory.Exists(maskdir))
+                Directory.Delete(maskdir, true);
+            Directory.CreateDirectory(maskdir);
+            var videocapture = new VideoCapture(VideoFilepath);
+            Mat frame = new Mat();
+            int frame_counter = 0;
+            Rectangle roi = new Rectangle(this.MaskOffsetX, this.MaskOffsetY, this.Width, this.Height);
+            Image<Gray, byte> mask = Mask?.ToImage();
+            while (videocapture.Read(frame))
+            {
+                progressbar?.UpdateText($"Processed: {frame_counter + 1} frames");
+                progressbar?.Display<object>();
+                //Convert the frame to a grayscale image
+                var image = frame.ToImage<Bgr, byte>();
+                image.Copy(roi).Save(Path.Combine(imagedir, string.Format("frame{0:D4}.png", frame_counter)));
+                mask?.Save(Path.Combine(maskdir, string.Format("frame{0:D4}.png", frame_counter)));
+                frame_counter++;
+            }
+            progressbar?.UpdateText($"Saving...");
+        }
+
         public async Task ProcessVideoParallel(string sqlconnection, ProgressBar progressbar = null!, bool force_generate = false)
         {
             if (!File.Exists(VideoFilepath))
@@ -98,6 +125,7 @@ namespace ColonoscopyRecreation.Entities
                 Image<Gray, byte> mask = null!;
                 if (MaskFilePath != null && File.Exists(MaskFilePath) && !this.Frames.Any(f => f.FrameIndex == -1))
                 {
+                    SetWidthHeightBasedOnMask();
                     mask = CvInvoke.Imread(MaskFilePath, ImreadModes.Grayscale).ToImage<Gray, byte>();
 
                     //Add frame to the database
@@ -107,8 +135,6 @@ namespace ColonoscopyRecreation.Entities
                         FrameIndex = -1,
                         Video = this
                     };
-                    Width = mask.Width; 
-                    Height = mask.Height;
                     this.Frames.Insert(0, db_frame);
                 }
 
@@ -120,8 +146,8 @@ namespace ColonoscopyRecreation.Entities
                 Mat frame = new Mat();
                 while (videocapture.Read(frame))
                 {
-                    progressbar.UpdateText($"Processed: {frame_counter + 1} frames");
-                    progressbar.Display<object>();
+                    progressbar?.UpdateText($"Processed: {frame_counter + 1} frames");
+                    progressbar?.Display<object>();
                     if (force_generate || !existing_frames.Contains(frame_counter))
                     {
                         //Convert the frame to a grayscale image
@@ -139,7 +165,7 @@ namespace ColonoscopyRecreation.Entities
                     }
                     frame_counter++;
                 }
-                progressbar.UpdateText($"Saving...");
+                progressbar?.UpdateText($"Saving...");
 
                 await db.SaveChangesAsync();
             }

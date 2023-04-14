@@ -30,16 +30,17 @@ namespace ColonoscopyRecreation
         static async Task Main(string[] args)
         {
             string sqlstring = SQLiteDatabasePath;
-            if (args.Length == 2)
-                sqlstring = args[2];
+            if (args.Any(arg => arg.StartsWith("--sql=")))
+                sqlstring = args.First(arg => arg.StartsWith("--sql=")).Substring(6,args.Length-6);
 
-            /*
-            using (var db = new DatabaseContext(sqlstring))
+            if (args.Contains("-c"))
             {
-                db.Database.EnsureDeleted();
-                db.Database.EnsureCreated();
+                using (var db = new DatabaseContext(sqlstring))
+                {
+                    db.Database.EnsureDeleted();
+                    db.Database.EnsureCreated();
+                }
             }
-            */
 
             var mainmenu = new Menu(null!, "Main menu", "Select an action");
             mainmenu.AddContextSwitchItem(new SelectFileMenu(mainmenu, "Load video", Directory.GetCurrentDirectory(), new List<string>() { ".mp4" }),
@@ -57,7 +58,7 @@ namespace ColonoscopyRecreation
                             video = await db.Videos.FirstOrDefaultAsync(v => v.VideoFilepath == videopath);
                             if (video == null)
                             {
-                                video = new Video { VideoFilepath = videopath, MaskFilePath = File.Exists(maskfile) ? maskfile : null! };
+                                video = new Video(videopath, File.Exists(maskfile) ? maskfile : null!);
                                 db.Database.EnsureCreated();
                                 db.Videos.Add(video);
                                 db.SaveChanges();
@@ -174,6 +175,7 @@ namespace ColonoscopyRecreation
                                 // Display the result
                                 CvInvoke.PutText(result, $"Frame {frame_ind - 1}-{frame_ind} (total: {frames.Count})", new System.Drawing.Point(5, 20), Emgu.CV.CvEnum.FontFace.HersheyPlain, 1, new MCvScalar(255, 100, 100), 1);
                                 CvInvoke.PutText(result, $"Esc/Backspace to exit", new System.Drawing.Point(5, 40), Emgu.CV.CvEnum.FontFace.HersheyPlain, 1, new MCvScalar(255, 100, 100), 1);
+                                CvInvoke.ResizeForFrame(result, result, new Size(1280, 720), Inter.Cubic);
                                 CvInvoke.Imshow("Matches", result);
                                 int key = CvInvoke.WaitKey(0);
 
@@ -202,33 +204,47 @@ namespace ColonoscopyRecreation
                    if (videoid == null) //backspaced
                        return;
 
+
                    Video video;
                    using (var db = new DatabaseContext(sqlstring))
                    {
                        video = db.Videos.Find(videoid)!;
+                       //Setup workspace
+                       var videoname = Path.GetFileNameWithoutExtension(video.VideoFilepath);
+                       var workspacepath = Path.Combine(folderpath, videoname);
+                       if (Directory.Exists(workspacepath))
+                           Directory.Delete(workspacepath, true);
+
+                       var progressbar = new ProgressBar(current, "Loading video to frames...");
+
+                       Directory.CreateDirectory(workspacepath);
+
+                       var imagefolder = Path.Combine(workspacepath, "Image");
+                       Directory.CreateDirectory(imagefolder);
+
+                       var maskfolder = Path.Combine(workspacepath, "Mask");
+                       Image<Gray, byte> mask = null!;
+                       if (video.MaskFilePath != null)
+                       {
+                           Directory.CreateDirectory(maskfolder);
+                           mask = CvInvoke.Imread(video.MaskFilePath, ImreadModes.Grayscale).ToImage<Gray, byte>();
+                       }
+                       video.GenerateMaskedColorImages(imagefolder, maskfolder, progressbar);
+
+                       ColMapWorkspace workspace = db.ColMapWorkspaces.FirstOrDefault(ws => ws.FolderPath == workspacepath)!;
+                       if (workspace == null)
+                       {
+                           workspace = new ColMapWorkspace()
+                           {
+                               FolderPath = workspacepath,
+                               Video = video
+                           };
+                       }
+                       workspace.Status = WorkspaceStatus.Initialized;
+                       db.ColMapWorkspaces.Update(workspace);
+                       db.SaveChanges();
                    }
-
-                   //Setup workspace
-                   var videoname = Path.GetFileNameWithoutExtension(video.VideoFilepath);
-                   var workspacepath = Path.Combine(folderpath, videoname);
-                   if (Directory.Exists(workspacepath))
-                       Directory.Delete(workspacepath, true);
-
-                   var progressbar = new ProgressBar(current, "Loading video to frames...");
-
-                   Directory.CreateDirectory(workspacepath);
-
-                   var imagefolder = Path.Combine(workspacepath, "Image");
-                   Directory.CreateDirectory(imagefolder);
-
-                   var maskfolder = Path.Combine(workspacepath, "Mask");
-                   Image<Gray, byte> mask = null!;
-                   if (video.MaskFilePath != null)
-                   {
-                       Directory.CreateDirectory(maskfolder);
-                       mask = CvInvoke.Imread(video.MaskFilePath, ImreadModes.Grayscale).ToImage<Gray, byte>();
-                   }
-
+                   /*
                    var videocapture = new VideoCapture(video.VideoFilepath);
                    Mat frame = new Mat();
                    int frame_counter = 1;
@@ -244,23 +260,7 @@ namespace ColonoscopyRecreation
                            mask.Save(Path.Combine(maskfolder, string.Format("frame{0:D4}.png", frame_counter)));
 
                        frame_counter++;
-                   }
-
-                   using (var db = new DatabaseContext(sqlstring))
-                   {
-                       ColMapWorkspace workspace = db.ColMapWorkspaces.FirstOrDefault(ws => ws.FolderPath == workspacepath)!;
-                       if (workspace == null)
-                       {
-                           workspace = new ColMapWorkspace()
-                           {
-                               FolderPath = workspacepath,
-                               Video = video
-                           };
-                       }
-                       workspace.Status = WorkspaceStatus.Initialized;
-                       db.ColMapWorkspaces.Update(workspace);
-                       db.SaveChanges();
-                   }
+                   }*/
 
                    current.Reset();
                });
@@ -285,7 +285,7 @@ namespace ColonoscopyRecreation
                        colmapexecutable = db.ExecutableFilePaths.FirstOrDefault(exe => exe.Name == "colmap")!;
                        if (colmapexecutable == null)
                        {
-                           var selectcolmap = new SelectFileMenu(current, "Select location of COLMAP.bat", Directory.GetCurrentDirectory(), new List<string>() { ".bat" });
+                           var selectcolmap = new SelectFileMenu(current, "Select location of COLMAP.exe", Directory.GetCurrentDirectory(), new List<string>() { ".exe" });
                            string colmappath = selectcolmap.Display<string>();
                            colmapexecutable = new ExecutableFilePath() { Name = "colmap", FilePath = colmappath };
                            db.ExecutableFilePaths.Add(colmapexecutable);
@@ -297,43 +297,60 @@ namespace ColonoscopyRecreation
                    var workspacepath = workspace.FolderPath;
                    var imagepath = Path.Combine(workspacepath, "Image");
                    var maskpath = Directory.Exists(Path.Combine(workspacepath, "Mask")) ? Path.Combine(workspacepath, "Mask") : null;
-                   var datatype = "video";
-                   var quality = "high";
+                   var datatype = "individual"; //"video", "individual", "internet"
+                   var quality = "low"; //"low", "medium", "high", "extreme"
+
+                   var replace = "\\";
+                   var with = "/";
 
                    Process colmapproc = new Process();
                    colmapproc.StartInfo.FileName = colmapexecutable.FilePath;
-                   StringBuilder args = new StringBuilder();
-                   args.Append($"automatic_reconstructor ");
-                   args.Append($"--log_to_stderr=1 ");
-                   args.Append($"--workspace_path='{workspacepath}' ");
-                   args.Append($"--image_path='{imagepath}' ");
+                   colmapproc.StartInfo.Verb = "runas";
+                   colmapproc.StartInfo.EnvironmentVariables["PATH"] = Path.GetDirectoryName(colmapexecutable.FilePath) + "\\..\\lib;" + colmapproc.StartInfo.EnvironmentVariables["PATH"];
+                   colmapproc.StartInfo.EnvironmentVariables["QT_PLUGIN_PATH"] = Path.GetDirectoryName(colmapexecutable.FilePath) + "\\..\\lib\\plugins;";
+                   colmapproc.StartInfo.ArgumentList.Add("automatic_reconstructor");
+                   colmapproc.StartInfo.ArgumentList.Add("--log_to_stderr=1");
+                   colmapproc.StartInfo.ArgumentList.Add($"--workspace_path='{workspacepath.Replace(replace, with)}'");
+                   colmapproc.StartInfo.ArgumentList.Add($"--image_path='{imagepath.Replace(replace, with)}'");
                    if (maskpath != null)
-                       args.Append($"--mask_path='{maskpath}' ");
-                   args.Append($"--data_type={datatype} ");
-                   args.Append($"--quality={quality} ");
-                   args.Append($"--single_camera={1} ");
-                   colmapproc.StartInfo.Arguments = args.ToString();
-                   //colmapproc.StartInfo.RedirectStandardError = true;
-                   //colmapproc.StartInfo.RedirectStandardOutput = true;
-                   colmapproc.StartInfo.UseShellExecute = true;
+                       colmapproc.StartInfo.ArgumentList.Add($"--mask_path='{maskpath.Replace(replace, with)}'");
+                   colmapproc.StartInfo.ArgumentList.Add($"--data_type={datatype}");
+                   colmapproc.StartInfo.ArgumentList.Add($"--quality={quality}");
 
-                   Debug.WriteLine($"Running command: COLMAP.bat {colmapproc.StartInfo.Arguments}");
-                   Debug.WriteLine($")
+                   Debug.WriteLine($"Running command: COLMAP.bat {string.Join(" ", colmapproc.StartInfo.ArgumentList)}");
 
                    colmapproc.Start();
-
                    colmapproc.WaitForExit();
 
+                   int exitcode = colmapproc.ExitCode;
+                   Console.ReadKey();
+
+                   /*
                    using (var db = new DatabaseContext(sqlstring))
                    {
                        db.Attach(workspace);
                        workspace.Status = WorkspaceStatus.Reconstructed;
                        db.SaveChanges();
-                   }
+                   }*/
 
                    current.Reset();
                });
-            mainmenu.Display<object>();
+
+            bool errored = false;
+            do
+            {
+                try
+                {
+                    mainmenu.Display<object>();
+                    errored = false;
+                }
+                catch (Exception ex)
+                {
+                    var errormessage = new ErrorMessage(null!, $"Error occured when performing an action: " + ex.Message);
+                    errormessage.Display<object>();
+                    errored = true;
+                }
+            } while (errored);
 
 
             String win1 = "Test Window"; //The name of the window

@@ -45,7 +45,8 @@ set ARGUMENTS=%ARGUMENTS% %1
 shift
 goto extract_argument_loop
 :after_extract_argument_loop
-
+echo %COMMAND%
+echo %ARGUMENTS%
 if "%COMMAND%"=="" set COMMAND=gui
 
 "%SCRIPT_PATH%\bin\colmap" %COMMAND% %ARGUMENTS%

@@ -3,6 +3,10 @@
     "ColonoscopyRecreation": {
       "commandName": "Project",
       "commandLineArgs": "\"hellworld\""
+    },
+    "CleanDB": {
+      "commandName": "Project",
+      "commandLineArgs": "-c"
     }
   }
 }

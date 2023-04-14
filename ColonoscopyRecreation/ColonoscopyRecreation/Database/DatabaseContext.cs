@@ -39,6 +39,7 @@ namespace ColonoscopyRecreation.Database
                 .OnDelete(DeleteBehavior.Cascade);
             videomodel.Property(v => v.Width).IsRequired();
             videomodel.Property(v => v.Height).IsRequired();
+            videomodel.Property(v => v.MaskFilePath).IsRequired(false);
 
 
             var framemodel = modelBuilder.Entity<Frame>();
